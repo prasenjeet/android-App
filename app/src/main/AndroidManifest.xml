@@ -19,6 +19,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ZFold5App">
 
+        <!-- Enable Activity Embedding splits — required for Pixel 9 Pro Fold multi-pane APIs -->
+        <property
+            android:name="android.window.PROPERTY_ACTIVITY_EMBEDDING_SPLITS_ENABLED"
+            android:value="true" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

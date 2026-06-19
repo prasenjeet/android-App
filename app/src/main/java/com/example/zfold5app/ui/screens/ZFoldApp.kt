@@ -2,13 +2,19 @@ package com.example.zfold5app.ui.screens
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Bookmarks
@@ -196,33 +202,65 @@ private fun TwoPaneLayout(
 
             VerticalDivider()
 
-            // Left pane: article list
-            ArticleListPane(
-                articles = articles,
-                selectedArticle = selectedArticle,
-                onArticleSelected = onArticleSelected,
-                modifier = Modifier
-                    .weight(0.4f)
-                    .fillMaxHeight(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp)
-            )
+            // Hinge-aware content split — adapts to Pixel 9 Pro Fold (~50/50) and
+            // Samsung Z Fold 5 (~40/60) by reading FoldingFeature.bounds from WindowManager.
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val density = LocalDensity.current
+                val availableWidthPx = with(density) { maxWidth.toPx() }.toInt()
 
-            VerticalDivider()
+                val feature = foldStateInfo.foldingFeature
+                val listFraction = remember(feature, availableWidthPx) {
+                    if (feature != null && feature.bounds.left > 0 && availableWidthPx > 0) {
+                        (feature.bounds.left.toFloat() / availableWidthPx).coerceIn(0.3f, 0.7f)
+                    } else {
+                        0.4f // fallback for non-fold or unknown bounds
+                    }
+                }
+                val hingeWidthDp = remember(feature) {
+                    with(density) { foldStateInfo.hingeWidthPx.toDp() }
+                }
 
-            // Right pane: article detail or empty state
-            if (selectedArticle != null) {
-                ArticleDetailPane(
-                    article = selectedArticle,
-                    modifier = Modifier
-                        .weight(0.6f)
-                        .fillMaxHeight()
-                )
-            } else {
-                EmptyDetailPane(
-                    modifier = Modifier
-                        .weight(0.6f)
-                        .fillMaxHeight()
-                )
+                Row(modifier = Modifier.fillMaxSize()) {
+                    // Left pane: article list (sized to hinge left edge)
+                    ArticleListPane(
+                        articles = articles,
+                        selectedArticle = selectedArticle,
+                        onArticleSelected = onArticleSelected,
+                        modifier = Modifier
+                            .weight(listFraction)
+                            .fillMaxHeight(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp)
+                    )
+
+                    // Physical hinge gap (visible on devices with a separating fold).
+                    // Pixel 9 Pro Fold: narrow crease (~0 dp logical); Z Fold 5: wider gap.
+                    if (foldStateInfo.isSeparating && hingeWidthDp > 1.dp) {
+                        Spacer(
+                            modifier = Modifier
+                                .width(hingeWidthDp)
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.outlineVariant)
+                        )
+                    } else {
+                        VerticalDivider()
+                    }
+
+                    // Right pane: article detail or empty state
+                    if (selectedArticle != null) {
+                        ArticleDetailPane(
+                            article = selectedArticle,
+                            modifier = Modifier
+                                .weight(1f - listFraction)
+                                .fillMaxHeight()
+                        )
+                    } else {
+                        EmptyDetailPane(
+                            modifier = Modifier
+                                .weight(1f - listFraction)
+                                .fillMaxHeight()
+                        )
+                    }
+                }
             }
         }
     }
@@ -256,35 +294,64 @@ private fun TableTopLayout(
             )
         }
     ) { innerPadding ->
-        Column(
+        // Use hinge bounds to position the fold line accurately.
+        // Pixel 9 Pro Fold tabletop: hinge top ≈ center of display height.
+        // Samsung Z Fold 5 tabletop: similar center split.
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Top half (above the physical fold): article detail or placeholder
-            if (selectedArticle != null) {
-                ArticleDetailPane(
-                    article = selectedArticle,
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                EmptyDetailPane(modifier = Modifier.weight(1f))
+            val density = LocalDensity.current
+            val availableHeightPx = with(density) { maxHeight.toPx() }.toInt()
+
+            val feature = foldStateInfo.foldingFeature
+            val topFraction = remember(feature, availableHeightPx) {
+                if (feature != null && feature.bounds.top > 0 && availableHeightPx > 0) {
+                    (feature.bounds.top.toFloat() / availableHeightPx).coerceIn(0.3f, 0.7f)
+                } else {
+                    0.5f
+                }
+            }
+            val hingeHeightDp = remember(feature) {
+                with(density) { foldStateInfo.hingeHeightPx.toDp() }
             }
 
-            // Visual indicator of the physical fold hinge
-            HorizontalDivider(
-                thickness = 6.dp,
-                color = MaterialTheme.colorScheme.outlineVariant
-            )
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top half (above the physical fold): article detail or placeholder
+                if (selectedArticle != null) {
+                    ArticleDetailPane(
+                        article = selectedArticle,
+                        modifier = Modifier.weight(topFraction)
+                    )
+                } else {
+                    EmptyDetailPane(modifier = Modifier.weight(topFraction))
+                }
 
-            // Bottom half (below the physical fold): article list (thumb-friendly zone)
-            ArticleListPane(
-                articles = articles,
-                selectedArticle = selectedArticle,
-                onArticleSelected = onArticleSelected,
-                modifier = Modifier.weight(1f),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp)
-            )
+                // Physical hinge divider — sized to actual hinge height when known
+                if (foldStateInfo.isSeparating && hingeHeightDp > 1.dp) {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(Modifier.height(hingeHeightDp))
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    )
+                } else {
+                    HorizontalDivider(
+                        thickness = 6.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+                }
+
+                // Bottom half (below fold): article list (thumb-friendly zone)
+                ArticleListPane(
+                    articles = articles,
+                    selectedArticle = selectedArticle,
+                    onArticleSelected = onArticleSelected,
+                    modifier = Modifier.weight(1f - topFraction),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp)
+                )
+            }
         }
     }
 }

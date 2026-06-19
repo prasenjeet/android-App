@@ -60,8 +60,8 @@ dependencies {
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.0")
 
-    // Jetpack WindowManager — fold state detection
-    implementation("androidx.window:window:1.3.0")
+    // Jetpack WindowManager — fold state detection (1.4.0 adds improved Pixel Fold hinge reporting)
+    implementation("androidx.window:window:1.4.0")
 
     // ViewModel + Lifecycle
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.5")
